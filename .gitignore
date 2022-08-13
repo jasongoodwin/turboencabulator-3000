@@ -1,0 +1,4 @@
+/target
+testfile*
+out.txt
+*.swp

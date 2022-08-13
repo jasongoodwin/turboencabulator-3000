@@ -1,0 +1,15 @@
+[package]
+name = "turboencabulator"
+authors = ["Jason Goodwin"]
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "3.2.16", features = ["derive"] }
+csv = "1.1"
+# dashmap is kind of slow... I'd rather using eg Arc<Map<RwLock<Map>>> or similar - would be easy to implement but more code.
+#dashmap = "5.3.4" # inspired by java concurrent hashmap impl. I seem to remember there is a faster alternative somewhere. Uses internal sharding w/ locks to allow concurrent and safe access. Uses unsafe to make a nice api.
+#rust_decimal = {version = "1.26.1", features = ["serde-with-float"] }
+#rust_decimal_macros = "1.26.1"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1.20.1", features = ["full"] }
