@@ -1,78 +1,115 @@
-# Turbo-encabulator 3000
+# Turboencabulator 3000
+The Turboencabulator 3000 presents an obfuscated project name on github. :)
+No longer simply widgets and doo-dads, the Turboencabulator 3000 has been designed to ingest transaction data and write out account state.
 
-The Turbo-encabulator 3000 presents an obfuscated project name on github. :)
-No longer simply widgets and doo-dads, the turbo-encabulator has been built to ingest transaction data and write out account state.
+I had fun writing this and did probably too much analysis of its behavior.
 
-## CLI features
-
+## CLI help
 CLI has a help flag that can be invoked to see usage:
 `cargo run -- --help`
 
 ## Running
-
 A CLI has been produced which is used as follows:
 `cargo run -- txs1.csv txs2.csv`
 One or more sets of transactions can be provided. They will be processed in order.
 
 Once complete, the application will print CSV to STDOUT representing account state after completing.
 
-## Testing
+## Debugging
+Some additional output such as run time can be printed by passing the `-d` flag:
+`cargo run -- input.csv -d`
 
+## Testing
 To run the test suite, run the following:
 `cargo test`
 
-## Debugging
+# Design Analysis and Discussion
 
-Debug output can be enabled with the `-d` flad:
-`cargo run -- input.csv -d`
-This will give some information on time taken.
+## General Notes
+Documentation and gold-plating exist in the project more for discussion.
+Simplicity rules, pre-mature optimization sucks.
+I would have offloaded the transaction history - that's the major wart IMO.
+Using sstables would probably be my major next step to eliminate memory use.
+Space complexity apx O(n) where n is number of debit/withdrawal transactions in input.
 
-# Design + Behavior
+## Assumptions
+There were some assumptions made as I had no-one to ask.
+The dispute workflow doesn't clarify deposits vs withdrawals - I assume that withdrawal disputes should't 
+actually GIVE assets back to the user, nor hold them. That doesn't make any sense.
+I still allow chargebacks on them, so I store them in memory.
 
+I assume deposits and withdrawals always have an `amount`.
+Otherwise, records ignore amount. The amount is always unwrapped so will cause death if missing.
+
+## Abstract
+The general idea is to read potentially massive files off of disk as a stream and keep memory usage small.
+If no transaction history is stored in memory, the application memory won't (1.1MB for a 1TB file in testing.)
+Transaction history will consume memory tho...
+
+A `producer` reads line by line and signals over mpsc channel to a `consumer` that will process serially. A buffer is used to ensure that memory
+is not consumed un-necessarily. This provides backpressure and stability. 
+The consumers could be sharded on client account to allow for better throughput as it's the bottleneck.
+
+A thread is spawned as the `producer` reading csv, and the main thread acts as the `consumer` in the mpsc channel.
+The receiver side will call until the sender has gone out of scope, and then will continue to print the csv to STDOUT.
+Errors in the CSV reader will panic the thread and it could be a bit more elegant in reporting errors.
+
+# Model
+Internally, the ClientAccounts are modelled, and each client has its own struct with a simple transaction history and 
+list of open debated transactions.
+
+There is no tracking of available or held funds, but they are instead calculated on each transaction.
+Because we need to track the debated transactions, it's much simpler to just store debates and calculate the available and held funds.
+It's effectively linear time on the number of open debates - it's fine.
+
+## Model Precision Issues
+
+f32 is used to represent amount assuming it's eg USD not SHIB. This is likely a bad assumption.
+This is the biggest area of concern - if shib is $0.000016CAD today it's too easily to hold an f32 worth...
+f32 holds most of the crypto market cap in USD tho.
+In production, I'd probably use `Decimal` not `f32` but it's 129 bits.
+I chose to start with `f32` and implementing a rounding to prevent any accumulating imprecision.
+
+## Held/available funds
 Held funds are calculated based on the currently disputed transactions. 
-It doesn't make sense to hold funds for a disputed withdraw - the held funds are only for disputed deposits.
-Can't dispute a chargeback as there isn't any transaction id for it so the history is only withdrawal and deposit.
+It doesn't make sense to hold funds for a disputed withdraw (which is a credit) - the held funds are only for disputed deposits.
 
+Held funds and available funds are not stored. Makes no sense - we need to hold the open disputes.
+All we need to do is add an open dispute, and then calculate based on open disputes.
+Everything is in memory - we can spend a couple cycles to compute in effectively `O(n)` where n is the number of open disputes.
+
+## Duplicated Transactions
 Duplicate transactions are ignored.
+If we've seen it already, we won't re-calculate.
 
-## Performance 
-It takes about 1s per 10 megs of csv on a 2020 macbook pro (intel.)
-No cloning is used - ownership is given of all data as it's moved.
-It's able to utilize ~1.5 CPUs w/ one thread producing from the CSV and another thread consuming.
-It uses a bounded mpsc channel to ensure backpressure so that memory utilization stays reasonable.
+Transaction id is unique - we shouldn't process the same debit/credit twice if it happens to appear.
 
-A 780M file was consumed to ensure memory safety. 
-~1M of memory is used by the application in processing that file.
+## Performance Analysis
 
-## Concurrent Map
-Rather than a full concurrent-hashmap implementation such as DashMap or Flurry, or using a young library, I decided to implement a simple concurrent hashmap solution.
-Sharded was chosen as an extremely simple mechanism to shard locks rather than implementing myself.
-The code would be easy to fork and maintain compared to full-on concurrent hashmap implementations.
+### Performance Summary:
+It takes about 1s per meg of csv on a 2020 macbook pro (intel.) Not excellent but good enough.
+It takes about 2MB per 1MB of input file due to storing transaction history.
 
+### Performance Analysis:
+No cloning is used - ownership is given of all data as it's moved. (It's possible there are some copies on primitives tho.)
+In testing, the application can utilize ~1.5 CPUs w/ the bottleneck being the consumer side. Sharding would yield better speed.
+It uses a bounded mpsc channel to ensure backpressure so that memory utilization stays reasonable when provided large files.
 
-The internals assume that massive ammounts of data may need to be processed with minimal resource consumption.
+A 1GB file was generated with a series of unique deposits across 100 clients. No duplicates - each is stored in memory.
+It takes about 900s to run through 1GB w/ 2.3GB of memory allocated by the application. 
+Only ~1.1MB is allocated by the application for the file when the `transaction_history` is not stored in memory.
+This demonstrates memory consumption is almost entirely due to the storage of the complete `transaction_history` in memory.
 
-The input is assumed ordered, and it is processed in an execution context in parallel as fast as the data can be streamed to the consumer.
+### Recommended Space Complexity Optimizations
+Transaction history could be stored to disk instead of memory to reduce consumption. 
+Something like sqllite, leveldb, or even implementing a couple sstable "levels" ourselves could be used to move the history to disk
+with reasonable read/write characteristics.
+I tried to lean the transaction history a bit by using the `TransactionHistoryRecord` instead of the entire `Transaction` but it doesn't save much.
 
-To ensure correctness, each account has a lock, but a lock-free datastructure has been used to store the actual accounts. One set of transactions is processed at a time, although multiple sets of transactions can be provided. The CLI can accept multiple sets of transactions to demonstrate this. It's assumed that each set of transactions needs to be processed in entirety so no more than one set of transactions is processed concurrently.
+## Why Tokio?
+Tokio is absolutely not needed here, but it demonstrates my experience and does offer some concurrency (~1.5x).
+Could pin a couple threads and it'd remove the big dependency tree.
+This is only here for demonstration. Even the `mpsc` usage is overkill imo.
+Async/Concurrent/Distributed and fast, safe stable systems are my jam. I've written books on this stuff!
 
-There are a few major components:
-
-- CLI - takes the input, streams the data into the processing enginer. Renders Accounts state back to CSV.
-- Accounts - accepts transactions async, updates accounts. Can provide state to a consumer.
-- Persistence - account information can be persisted through runs (optionally). The application memory is the source of truth, redis is used only for faster recovery. It would be possible to use Kafka with compaction for this use case as well. This is done once at the end of the processing of a set of transactions atomically to ensure the update is either done in entirety or not. Coupled with Kafka for example, this would ensure the consumer can safely recover from a crash or restart. 
-
-The idea behind the design is that we may want to remove the CLI and have multiple producers that are putting the transactions somewhere (eg kafka), and we may be able to process them very quickly if we can continuously stream into the accounts from the source. There is some fan out from the input so it allows parallelization of the processing.
-
-Tokio is used as the runtime.
-To improve performance, accounts are written to redis using protocol buffers+compression.
-
-# Alternatives Considered
-
-Rather than persisting to redis, it would be possible to use Kafka with topic compaction in this use case. Each account could be compacted, and entire topic could be re-read on startup to re-acquire the total state of all accounts quickly. 
-
-https://developer.confluent.io/learn-kafka/architecture/compaction/#:~:text=Topic%20Compaction%20Guarantees,value%20for%20a%20given%20key.
-
-If kafka was used to consume and then produce the current account states back into kafka after each message processed, the movement of the consumer offset and updated messages would need to be written back with transactional semantics.
-
-Beyond considering a single consumer, it becomes easy to understand how to horizontally scale utilizing consumer groups that are sharded on account id. Changes to the consumer group (adding/removing nodes) would need to be handled carefully as the accounts would need to be re-read on redistribution of partitions.
+Not much other premature optimization done - it's enough for today and has been validated reasonably without more info.

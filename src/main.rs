@@ -1,36 +1,27 @@
-mod client_accounts;
-mod sharded;
-mod transaction;
-
-use tokio::sync::mpsc;
-
-// use crate::clients::Transaction;
-// use rust_decimal_macros::dec;
-// use rust_decimal::prelude::*;
 extern crate clap;
 
-use client_accounts::ClientAccounts;
-use clap::Parser;
-use serde::Deserialize;
-use std::time::Instant;
-use std::error::Error;
-// use dashmap::DashMap;
-// use rust_decimal::Decimal;
-use csv::{Writer, ReaderBuilder};
-use csv::Trim::All;
-use crate::transaction::Transaction;
 use std::borrow::{Borrow, BorrowMut};
+use std::error::Error;
+use std::time::Instant;
 
-// use crate::transaction::TransactionType::FileComplete;
+use clap::Parser;
+use csv::Trim::All;
+use csv::{ReaderBuilder, Writer};
+use serde::Deserialize;
+use tokio::sync::mpsc;
+
+use client_accounts::ClientAccounts;
+
+use crate::transaction::Transaction;
+
+mod client_accounts;
+mod transaction;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
     #[clap(value_parser)]
     transactions_file: String,
-
-    #[clap(value_parser)]
-    redis_server: Option<String>,
 
     #[clap(short, parse(from_flag))]
     debug: bool,
@@ -42,13 +33,11 @@ async fn main() {
 
     let args = Args::parse();
     let file_path = args.transactions_file;
-    let redis_server = args.redis_server;
     let debug = args.debug;
 
     if debug {
         println!("\nStarting...");
         println!("\tInput file: {}", file_path);
-        println!("\tRedis server: {:?}", redis_server);
         println!("\tResult:\n");
     }
 
@@ -63,7 +52,7 @@ async fn main() {
     // ensure only one set of transactions processed at a time as transactions are ordered.
     tokio::spawn(async move {
         let mut rdr = ReaderBuilder::new()
-            .trim(All)// ensures whitespace ignored.
+            .trim(All) // ensures whitespace ignored.
             .from_path(file_path)
             .unwrap(); // Fails thread on missing file.
 
@@ -88,7 +77,7 @@ async fn main() {
 
     let csv_res = clients.write_csv(Box::new(std::io::stdout()));
 
-    if debug {
+    if debug || csv_res.is_err() {
         let elapsed = now.elapsed();
         println!("\nCompleted run.");
         println!("\tResult: {:?}", csv_res);
