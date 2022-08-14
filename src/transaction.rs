@@ -4,7 +4,7 @@ use serde::{Deserialize, Deserializer};
 ///
 /// Implements Deserialize so can be used with serde.
 /// Unknown transaction types will deserialize to Unknown which we just ignore.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum TransactionType {
     Deposit,
     Withdrawal,
@@ -44,7 +44,7 @@ pub struct Transaction {
     pub(crate) typ: TransactionType,
     pub(crate) client: u16,
     pub tx: u32,
-    pub(crate) amount: Option<f32>,
+    pub(crate) amount: Option<f64>,
 }
 
 /// This is a slimmer version of the transaction to reduce memory consumption.
@@ -52,12 +52,11 @@ pub struct Transaction {
 #[derive(Debug, PartialEq)]
 pub struct TransactionHistoryRecord {
     pub(crate) typ: TransactionType,
-    pub(crate) amount: f32,
+    pub(crate) amount: f64,
 }
 
 #[cfg(test)]
 mod tests {
-    use csv::Reader;
     use csv::Trim::All;
     use indoc::indoc;
 

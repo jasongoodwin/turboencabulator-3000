@@ -19,27 +19,47 @@ Once complete, the application will print CSV to STDOUT representing account sta
 Some additional output such as run time can be printed by passing the `-d` flag:
 `cargo run -- input.csv -d`
 
-## Testing
+## Unit Test
 To run the test suite, run the following:
 `cargo test`
+
+## Make
+Alternative to invoking eg cargo, you can use make. 
+Have a look at the Makefile to see the targets. 
+
+## Commited Test Data
+There are files in the root that test a few specific cases.
+
+## Generating Test Data
+To allow massive streams of data to be tested, a `generate_test_data.sh` file is included that will produce
+massive files for testing large sets of deposits _only_.
 
 # Design Analysis and Discussion
 
 ## General Notes
-Documentation and gold-plating exist in the project more for discussion.
-Simplicity rules, pre-mature optimization sucks.
-I would have offloaded the transaction history - that's the major wart IMO.
+It's maybe a little over-engineered but I had fun.
+Most of the project is testing. I tested it fairly well.
+
+I made the decision to keep the transaction records as floats, but the clients as Decimal.
+No rounding is done, but the Decimal conversions will cleave w/o `retain` so it all works out without explicit rounding.
+
 Using sstables would probably be my major next step to eliminate memory use.
 Space complexity apx O(n) where n is number of debit/withdrawal transactions in input.
+I've run it against massive files - the only thing that takes any memory is the transaction history.
+
+Disputes simply reference records in the transaction history.
+The clients themselves actually don't store available/held but only disputes.
+Everything is calculated at some expense of time but reduced space.
 
 ## Assumptions
 There were some assumptions made as I had no-one to ask.
 The dispute workflow doesn't clarify deposits vs withdrawals - I assume that withdrawal disputes should't 
-actually GIVE assets back to the user, nor hold them. That doesn't make any sense.
+GIVE assets back to the user, nor hold them.
 I still allow chargebacks on them, so I store them in memory.
 
 I assume deposits and withdrawals always have an `amount`.
 Otherwise, records ignore amount. The amount is always unwrapped so will cause death if missing.
+Thread will die if this requirement is not met at the moment.
 
 ## Abstract
 The general idea is to read potentially massive files off of disk as a stream and keep memory usage small.
@@ -55,12 +75,12 @@ The receiver side will call until the sender has gone out of scope, and then wil
 Errors in the CSV reader will panic the thread and it could be a bit more elegant in reporting errors.
 
 # Model
-Internally, the ClientAccounts are modelled, and each client has its own struct with a simple transaction history and 
+Internally, the ClientAccounts are modelled, and each client has its own struct with a transaction history and 
 list of open debated transactions.
 
-There is no tracking of available or held funds, but they are instead calculated on each transaction.
+As mentioned, there is no tracking of available or held funds, but they are instead calculated on each transaction.
 Because we need to track the debated transactions, it's much simpler to just store debates and calculate the available and held funds.
-It's effectively linear time on the number of open debates - it's fine.
+It's effectively linear time on the number of open debated transactions - that's preferred as space can get big.
 
 ## Model Precision Issues
 
@@ -87,11 +107,11 @@ Transaction id is unique - we shouldn't process the same debit/credit twice if i
 ## Performance Analysis
 
 ### Performance Summary:
-It takes about 1s per meg of csv on a 2020 macbook pro (intel.) Not excellent but good enough.
-It takes about 2MB per 1MB of input file due to storing transaction history.
+It takes about 1s per meg of csv w/ 1 transaction per client on a 2020 macbook pro (intel.) Not excellent but good enough.
+Memory utilizes a bit more w/ 3mb per 1mb of input apx solely for the transaction history.
+There is likely some optimization possible here.
 
-### Performance Analysis:
-No cloning is used - ownership is given of all data as it's moved. (It's possible there are some copies on primitives tho.)
+No cloning is used - ownership is given of all data as it's moved. (It's possible there are some copies on primitives tho eg in map keys.)
 In testing, the application can utilize ~1.5 CPUs w/ the bottleneck being the consumer side. Sharding would yield better speed.
 It uses a bounded mpsc channel to ensure backpressure so that memory utilization stays reasonable when provided large files.
 

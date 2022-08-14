@@ -1,4 +1,7 @@
 #!/bin/bash
+
+
+
 echo "type, client,tx,amount"
 for ((a=1; a <= 50000000 ; a++))
 do

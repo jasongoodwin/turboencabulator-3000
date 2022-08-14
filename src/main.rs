@@ -1,18 +1,13 @@
 extern crate clap;
 
-use std::borrow::{Borrow, BorrowMut};
-use std::error::Error;
 use std::time::Instant;
 
 use clap::Parser;
+use csv::ReaderBuilder;
 use csv::Trim::All;
-use csv::{ReaderBuilder, Writer};
-use serde::Deserialize;
 use tokio::sync::mpsc;
 
 use client_accounts::ClientAccounts;
-
-use crate::transaction::Transaction;
 
 mod client_accounts;
 mod transaction;
