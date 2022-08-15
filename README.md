@@ -10,7 +10,7 @@ CLI has a help flag that can be invoked to see usage:
 
 ## Running
 A CLI has been produced which is used as follows:
-`cargo run -- txs1.csv txs2.csv`
+`cargo run -- txs1.csv`
 One or more sets of transactions can be provided. They will be processed in order.
 
 Once complete, the application will print CSV to STDOUT representing account state after completing.
