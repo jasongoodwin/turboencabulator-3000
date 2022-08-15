@@ -31,27 +31,18 @@ eg:
 `make test`
 
 ## Test Data
-There are files in the root that test a specific cases but primarily the unit tests will cover correctness.
+There is a file in the root that tests a specific case, but primarily the unit tests will cover correctness.
 
 To allow massive streams of data to be tested, a `generate_test_data.sh` file is included that will produce
-massive files for testing large sets of deposits _only_.
+larger files for testing sets of deposits at larger scale.
 
 # Design Analysis and Discussion
 
 ## High Level Design and Performance Characteristics
 This section contains a few notes to guide you.
-The next section contains more granular detail.
 
 f64 is used for the transaction history, and `Decimal` (129bit) is used in the client.
-No held or available data is held, but disputes are held, and the available/held fields are calculated.
-
-Space complexity ends up being a bit heavy - with no transaction history stored, the app only takes a meg of memory, 
-but the transaction history is held until termination so grows linearly.
-Using sstables would be my major next step to eliminate memory use.
-I've run it against massive files - the only thing that takes any memory is the transaction history.
-
-Disputes simply reference records in the transaction history.
-It keeps it slightly leaner.
+No held or available data is held, but disputes are held in a list for a client account, and the available/held fields are calculated using the disputes and history.
 
 Data is streamed between a producer thread reading the file with backpressure into the consumer that keeps the client accounts.
 Tests describe anything else. 
