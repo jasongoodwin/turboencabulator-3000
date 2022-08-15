@@ -47,8 +47,7 @@ pub struct Transaction {
     pub(crate) amount: Option<f64>,
 }
 
-/// This is a slimmer version of the transaction to reduce memory consumption.
-/// TODO Didn't measure it much so it may be un-necessary. Easy change.
+/// Record of transaction having been processed stored in a client.
 #[derive(Debug, PartialEq)]
 pub struct TransactionHistoryRecord {
     pub(crate) typ: TransactionType,
