@@ -38,11 +38,8 @@ larger files for testing sets of deposits at larger scale.
 
 # Design Analysis and Discussion
 
-## High Level Design and Performance Characteristics
+## High Level Design
 This section contains a few notes to guide you.
-
-f64 is used for the transaction history, and `Decimal` (129bit) is used in the client.
-No held or available data is held, but disputes are held in a list for a client account, and the available/held fields are calculated using the disputes and history.
 
 Data is streamed between a producer thread reading the file with backpressure into the consumer that keeps the client accounts.
 Tests describe anything else. 
@@ -68,26 +65,18 @@ Errors in the CSV reader will panic the thread and it could be a bit more elegan
 Internally, the ClientAccounts are modelled, and each client has its own struct with a transaction history and 
 list of open debated transactions.
 
-As mentioned, there is no tracking of available or held funds, but they are instead calculated on each transaction.
-Because we need to track the debated transactions, it's much simpler to just store debates and calculate the available and held funds.
-It's effectively linear time on the number of open debated transactions - that's preferred as space can get big.
+There is no tracking of available or held funds, but they are instead calculated with the list of open disputes, and the transaction history.
+It's effectively linear time on the number of open debated transactions - that's preferred as space is ~linear to the size of the CSV.
 
-## Model Precision Issues
-
-Client accounts use Decimal without rounding to represent amount.
-This is a large attribute at 125 bits.
-Transaction history stores only the ammount and keeps it in mem as f64.
-Calculations convert from f64 to Decimal and imprecision is discarded at that point.
-This has been tested thoroughly - it offers a good balance between space and time complexity while promising correctness.
-
-It's assumed that we may represent something like shib so I switched transactions to keep f64 instead of f32 last minute.
-I tested storing floats in the client account but couldn't stop float imprecision from causing calculation issues (see unit testing.)
+`f64` is used for the transaction history, and `Decimal` (129bit) is used for the amount in the client.
+The application has been tested for precision. The data types allow only the client to use the larger decimal type, while the transaction history can use the smaller `f64`.
+`f64` was chosen vs `f32` assuming we may be dealing with assets like shib that have low value per unit.
+No held or available data is held, but disputes are held in a list for a client account, and the available/held fields are calculated using the disputes and history.
 
 ## Held/available funds
 No notion of held or available funds exists in the data modelled.
 Held funds are calculated based on the currently disputed transactions. 
-It doesn't make sense to hold funds for a disputed withdraw (which is a credit) - the held funds are only for disputed deposits.
-There is some cost to this, but it's marginal. Space is preferred as space complexity is relative to input.
+
 Everything is in memory - we can spend a couple cycles to compute in effectively `O(n)` where n is the number of open disputes.
 It's assumed that disputes would be rare and a client may only have one or two open.
 
@@ -101,7 +90,6 @@ This isn't true for disputes/resolutions/chargebacks as they don't have their ow
 ### Performance Summary:
 It takes about 1s per meg of csv w/ 1 transaction per client on a 2020 macbook pro (intel.) Not excellent but good enough.
 Memory utilizes a bit more w/ 2-3mb per 1mb of input. This is solely for the transaction history and has been confirmed in testing.
-It would be possible to optimize space complexity - I just ensure that there is no leaking at this point.
 
 No cloning is used - ownership is given of all data which prevents excessive allocation. (It's possible there are some copies on primitives tho - map keys for example are referenced on Copy primatives.)
 In testing, the application can utilize ~1.5 CPUs w/ the bottleneck being the consumer side so the csv reader will keep the buffer full. 
@@ -121,10 +109,5 @@ I tried to lean the transaction history a bit by using the `TransactionHistoryRe
 I would undo that probably for the sake of simplicity.
 
 ## Why Tokio?
-Tokio is absolutely not needed here - streaming utilizing only one core and no async would be simpler.
-But it demonstrates my experience and does offer some concurrency (~1.5x).
-Could pin a couple threads and it'd remove the big dependency tree from tokio even.
-This is only here for demonstration. Even the `mpsc` usage is overkill imo.
-Async/Concurrent/Distributed and fast, safe stable systems are my jam. I've written books on this stuff!
-But simplicity rules, and premature optimization is the devil.
-So an actual submission would be as simple as possible and I would avoid MPSC here for the sake of juniors.
+Tokio is not needed here - streaming utilizing only one core and no async would be simpler.
+But it demonstrates my experience as I understand you're using it, and does offer some concurrency (~1.5x). 
