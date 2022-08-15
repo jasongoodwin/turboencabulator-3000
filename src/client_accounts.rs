@@ -85,7 +85,9 @@ impl ClientAccount {
 
     fn update(&mut self, tx: Transaction) {
         match tx.typ {
-            TransactionType::Deposit if !self.transaction_history.contains_key(&tx.tx) => {
+            TransactionType::Deposit
+                if !self.transaction_history.contains_key(&tx.tx) && tx.amount.is_some() =>
+            {
                 self.total += Decimal::from_f64(tx.amount.unwrap()).unwrap();
                 self.transaction_history.insert(
                     tx.tx,
@@ -96,7 +98,9 @@ impl ClientAccount {
                 );
             }
 
-            TransactionType::Withdrawal if !self.transaction_history.contains_key(&tx.tx) => {
+            TransactionType::Withdrawal
+                if !self.transaction_history.contains_key(&tx.tx) && tx.amount.is_some() =>
+            {
                 let tx_amount = Decimal::from_f64(tx.amount.unwrap()).unwrap();
                 if self.available() - tx_amount >= dec!(0.0) {
                     self.total -= tx_amount;
