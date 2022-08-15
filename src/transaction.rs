@@ -152,8 +152,6 @@ mod tests {
     }
 
     #[test]
-    /// validates that the input can have insignificant space.
-    /// Extraneous - this is testing the csv lib trim=All
     fn deserialize_with_tabs_and_spaces_should_not_fail() {
         let csv = indoc!(
             "type,     client,     tx,\t\t\tamount
